@@ -1,1 +1,145 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+const int flexPins[5] = {34, 35, 32, 33, 25};
+int flexValues[5];
+
+String lastSign = "";
+String currentSign = "";
+int sameCount = 0;
+const int STABLE_COUNT = 5;
+
+// -------------------------
+// Finger state function
+// S = Straight
+// B = Bent
+// U = Uncertain
+// -------------------------
+char getFingerState(int finger, int val) {
+  switch (finger) {
+    case 0: // Thumb
+      if (val < 250) return 'S';
+      else if (val > 300) return 'B';
+      else return 'U';
+
+    case 1: // Index
+      if (val < 10) return 'S';
+      else if (val > 20) return 'B';
+      else return 'U';
+
+    case 2: // Middle
+      if (val < 60) return 'S';
+      else if (val > 60) return 'B';
+      else return 'U';
+
+    case 3: // Ring
+      if (val < 750) return 'S';
+      else if (val > 750) return 'B';
+      else return 'U';
+
+    case 4: // Pinky
+      if (val < 10) return 'S';
+      else if (val > 15) return 'B';
+      else return 'U';
+
+    default:
+      return 'U';
+  }
+}
+
+// -------------------------
+// Detect gesture function
+// -------------------------
+String detectSign() {
+  char f[5];
+
+  for (int i = 0; i < 5; i++) {
+    flexValues[i] = analogRead(flexPins[i]);
+    f[i] = getFingerState(i, flexValues[i]);
+  }
+
+  // Print raw values
+  Serial.print("T:"); Serial.print(flexValues[0]);
+  Serial.print(" I:"); Serial.print(flexValues[1]);
+  Serial.print(" M:"); Serial.print(flexValues[2]);
+  Serial.print(" R:"); Serial.print(flexValues[3]);
+  Serial.print(" P:"); Serial.print(flexValues[4]);
+
+  // Print states
+  Serial.print("   States: ");
+  for (int i = 0; i < 5; i++) {
+    Serial.print(f[i]);
+    Serial.print(" ");
+  }
+  Serial.println();
+
+  // If any finger is uncertain, ignore
+  for (int i = 0; i < 5; i++) {
+    if (f[i] == 'U') return "...";
+  }
+
+  char T = f[0];
+  char I = f[1];
+  char M = f[2];
+  char R = f[3];
+  char P = f[4];
+
+  // Gesture rules
+  if (T == 'S' && I == 'S' && M == 'S' && R == 'S' && P == 'S') return "Hello";
+
+  if (T == 'B' && I == 'B' && M == 'B' && R == 'B' && P == 'B') return "Help me";
+
+  if (T == 'S' && I == 'B' && M == 'B' && R == 'B' && P == 'B') return "Good";
+
+  if (T == 'B' && I == 'S' && M == 'B' && R == 'B' && P == 'B') return "No";
+
+  if (T == 'S' && I == 'B' && M == 'B' && R == 'B' && P == 'S') return "Call me";
+
+  return "...";
+}
+
+// -------------------------
+// Setup
+// -------------------------
+void setup() {
+  Serial.begin(115200);
+
+  lcd.init();
+  lcd.backlight();
+
+  lcd.setCursor(0, 0);
+  lcd.print("Sign Lang Glove");
+  delay(2000);
+  lcd.clear();
+}
+
+// -------------------------
+// Loop
+// -------------------------
+void loop() {
+  String sign = detectSign();
+
+  if (sign == currentSign) {
+    sameCount++;
+  } else {
+    currentSign = sign;
+    sameCount = 0;
+  }
+
+  if (sameCount >= STABLE_COUNT && currentSign != lastSign) {
+    lastSign = currentSign;
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Gesture:");
+
+    lcd.setCursor(0, 1);
+    String padded = currentSign;
+    while (padded.length() < 16) padded += " ";
+    lcd.print(padded);
+  }
+
+  delay(100);
+}
